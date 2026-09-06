@@ -1,5 +1,8 @@
 # Roth vs. Traditional Contribution Screen
 
+**➡️ [Try it live](https://pymap33.github.io/roth-vs-traditional-screen/) — runs
+entirely in your browser, nothing to install, nothing sent anywhere.**
+
 A directional screening tool: given a household's account balances, contribution
 split, and tax situation, it projects several Roth/traditional contribution-split
 scenarios forward through retirement (including RMD-forced income and bracket
