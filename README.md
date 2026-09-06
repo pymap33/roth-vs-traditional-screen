@@ -76,9 +76,32 @@ deduction schedule to `tax_tables.py` first.**
 - `sensitivity_social_security.py` - SS benefit on/off at several levels.
 - `compare_withdrawal_order.py` - all three withdrawal strategies side by side.
 
-## Browser version (planned)
+## Browser version
 
-A client-side HTML version is planned, using [Pyodide](https://pyodide.org/) (Python
-compiled to WebAssembly) to run this exact `engine.py`/`tax_tables.py` in-browser -
-not a hand-ported JavaScript rewrite - so there is never a second implementation to
-drift out of sync with this one. Not yet built.
+`index.html` runs this exact `engine.py`/`tax_tables.py` in-browser via
+[Pyodide](https://pyodide.org/) (Python compiled to WebAssembly) - not a hand-ported
+JavaScript rewrite, so there is never a second implementation of the tax/withdrawal
+logic to drift out of sync with the Python one. `web_bridge.py` is the only new code
+involved - a thin orchestration layer that calls `engine.run_scenario()` once per
+contribution-split scenario and shapes the results into JSON for the page; it
+contains no tax/withdrawal logic of its own.
+
+**Nothing you enter is sent anywhere** - the whole thing runs locally in your
+browser tab, including the Python interpreter itself.
+
+**To run it locally**, serve the folder over HTTP (opening `index.html` directly
+from disk will fail - browsers block `fetch()` of sibling files from `file://`
+URLs):
+
+```
+python -m http.server 8000
+# then open http://localhost:8000/ in a browser
+```
+
+Once this repo is public, the same page can be hosted for free on GitHub Pages
+with no server of your own required.
+
+**Status:** built 2026-09-05, verified end-to-end in plain CPython (the bridge
+function reproduces the CLI scripts' numbers exactly) and checked against Pyodide's
+documented JS API, but **not yet confirmed running in an actual browser** - test it
+yourself locally before relying on it or sharing a link.

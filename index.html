@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roth vs. Traditional Contribution Screen</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Roth vs. Traditional Contribution Screen</h1>
+  <p class="subtitle">
+    A directional screen, not tax or financial advice. Runs the real Python
+    engine from this repository directly in your browser (via
+    <a href="https://pyodide.org/" target="_blank" rel="noopener">Pyodide</a>) —
+    nothing you enter here is sent anywhere; the whole thing runs locally in
+    this tab.
+  </p>
+</header>
+
+<main>
+  <div id="loading" class="status-banner">
+    Loading the Python engine into your browser (first load only, a few
+    seconds)&hellip;
+  </div>
+  <div id="load-error" class="status-banner status-error" hidden></div>
+
+  <form id="household-form" hidden>
+    <fieldset>
+      <legend>Household</legend>
+      <div class="field-row">
+        <label for="filingStatus">Filing status</label>
+        <select id="filingStatus">
+          <option value="MFJ">Married filing jointly</option>
+          <option value="SINGLE">Single</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="state">State</label>
+        <select id="state">
+          <option value="WI">Wisconsin</option>
+        </select>
+        <p class="field-note">
+          Only Wisconsin's tax brackets are built into this tool today. Using
+          another state requires adding its bracket/deduction schedule to
+          <code>tax_tables.py</code> first — see the repository README.
+        </p>
+      </div>
+      <div class="field-row">
+        <label for="currentAge">Your current age</label>
+        <input type="number" id="currentAge" min="18" max="100" value="40">
+      </div>
+      <div class="field-row">
+        <label for="retirementAge">Target retirement age</label>
+        <input type="number" id="retirementAge" min="18" max="100" value="65">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Account balances (today)</legend>
+      <p class="field-note">
+        Combine all accounts of each type. Do not include an emergency fund
+        or cash reserve you consider off-limits to retirement spending.
+      </p>
+      <div class="field-row">
+        <label for="balTraditional">Traditional 401k / IRA balance ($)</label>
+        <input type="number" id="balTraditional" min="0" step="1000" value="0">
+      </div>
+      <div class="field-row">
+        <label for="balRoth">Roth 401k / IRA balance ($)</label>
+        <input type="number" id="balRoth" min="0" step="1000" value="0">
+      </div>
+      <div class="field-row">
+        <label for="balTaxable">Taxable brokerage balance ($)</label>
+        <input type="number" id="balTaxable" min="0" step="1000" value="0">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Annual contributions</legend>
+      <div class="field-row">
+        <label for="employeeContrib">Your annual elective deferral ($)</label>
+        <input type="number" id="employeeContrib" min="0" step="500" value="20000">
+        <p class="field-note">
+          The comparison varies how THIS amount splits between Roth and
+          traditional across the five scenarios below — it is not itself an
+          input you choose a split for.
+        </p>
+      </div>
+      <div class="field-row">
+        <label for="employerContrib">Employer match / contribution, annual ($)</label>
+        <input type="number" id="employerContrib" min="0" step="500" value="0">
+        <p class="field-note">Almost always locked pre-tax by plan rules regardless of your own choice.</p>
+      </div>
+      <div class="field-row">
+        <label for="wageBase">Current household taxable income, approx ($)</label>
+        <input type="number" id="wageBase" min="0" step="1000" value="100000">
+        <p class="field-note">Under your CURRENT contribution split, before any change.</p>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Retirement spending</legend>
+      <div class="field-row">
+        <label for="spendingTarget">Annual spending target, today's dollars ($)</label>
+        <input type="number" id="spendingTarget" min="0" step="1000" value="60000">
+        <p class="field-note">
+          Usually the softest number anyone supplies — watch for a recent
+          one-off expense (a home repair, a major purchase) inflating a naive
+          average of actual past spending.
+        </p>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Social Security</legend>
+      <div class="field-row checkbox-row">
+        <input type="checkbox" id="ssEnabled">
+        <label for="ssEnabled">Include an assumed Social Security benefit</label>
+      </div>
+      <div id="ss-fields" class="ss-fields" hidden>
+        <div class="field-row">
+          <label for="ssBenefit">Household annual benefit, today's dollars ($)</label>
+          <input type="number" id="ssBenefit" min="0" step="1000" value="30000">
+          <p class="field-note">Get this from ssa.gov/myaccount rather than guessing.</p>
+        </div>
+        <div class="field-row">
+          <label for="ssClaimingAge">Claiming age</label>
+          <input type="number" id="ssClaimingAge" min="62" max="70" value="67">
+          <p class="field-note">
+            Must be at or after your target retirement age above — claiming
+            while still working needs a benefits-withheld calculation this
+            tool doesn't do, and will be clamped up automatically.
+          </p>
+        </div>
+      </div>
+    </fieldset>
+
+    <details class="advanced">
+      <summary>Advanced assumptions</summary>
+      <fieldset>
+        <div class="field-row">
+          <label for="realReturn">Real (after-inflation) annual return</label>
+          <input type="number" id="realReturn" min="0" max="0.15" step="0.005" value="0.05">
+        </div>
+        <div class="field-row">
+          <label for="longevityAge">Longevity horizon (age)</label>
+          <input type="number" id="longevityAge" min="70" max="105" value="95">
+        </div>
+        <div class="field-row">
+          <label for="withdrawalStrategy">Withdrawal strategy in retirement</label>
+          <select id="withdrawalStrategy">
+            <option value="bracket_fill" selected>Bracket-fill (proactively withdraw traditional up to a target bracket)</option>
+            <option value="sequential">Sequential (RMD only, then taxable &rarr; traditional &rarr; Roth)</option>
+            <option value="pace_to_horizon">Pace to horizon (drain traditional evenly by the longevity age)</option>
+          </select>
+        </div>
+        <div class="field-row" id="bracket-fill-rate-row">
+          <label for="bracketFillRate">Bracket-fill target rate</label>
+          <select id="bracketFillRate">
+            <option value="0.10">10%</option>
+            <option value="0.12" selected>12%</option>
+            <option value="0.22">22%</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label for="widowAge">Model a widow/widower stress case starting at age (optional)</label>
+          <input type="number" id="widowAge" min="0" max="105" value="" placeholder="leave blank to skip">
+          <p class="field-note">Simulates the survivor dropping to single-filer brackets on the same income, starting at this age.</p>
+        </div>
+      </fieldset>
+    </details>
+
+    <button type="submit" id="run-button">Run comparison</button>
+  </form>
+
+  <section id="results" hidden>
+    <h2>Results, ranked by net-of-tax ending wealth</h2>
+    <p class="field-note">
+      Net-of-tax wealth accounts for the fact that traditional dollars still
+      owe ordinary income tax, and taxable-brokerage dollars still owe
+      capital-gains tax — Roth, traditional, and taxable dollars are not
+      worth the same amount, so summing them at face value would overstate
+      traditional-heavy scenarios.
+    </p>
+    <div id="chart"></div>
+    <div id="results-table"></div>
+  </section>
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/pymap33/roth-vs-traditional-screen" target="_blank" rel="noopener">Source on GitHub</a>
+    — engine logic lives in <code>engine.py</code> / <code>tax_tables.py</code>,
+    loaded and run unmodified by this page.
+  </p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.6/full/pyodide.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
