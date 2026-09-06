@@ -70,6 +70,14 @@ brackets and standard-deduction phase-out are verified against the live WI DOR 2
 Form 1 instructions - **using a different state requires adding its own bracket/
 deduction schedule to `tax_tables.py` first.**
 
+**Planned state additions (not yet built):** Illinois, Indiana, Michigan, South
+Carolina, and Florida. Each needs its own bracket/standard-deduction schedule
+verified against that state's live Department of Revenue source before being added
+- the same treatment WI got, not a guess ported from an unverified third-party
+summary. Florida has no state income tax, so it just needs a zero-rate schedule
+(and a UI note that its `wi_tax`-equivalent trivially returns 0) rather than a real
+bracket table.
+
 ## Sensitivity tools
 
 - `sensitivity_return.py` - real return assumption, 2-6%.
