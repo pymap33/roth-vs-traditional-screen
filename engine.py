@@ -71,31 +71,32 @@ def load_household(path):
 
 
 def _solve_traditional_gross_up(target_net, base_fed_income, base_state_withdrawal,
-                                 filing_status, state, available):
+                                 filing_status, state, available, age=0):
     """
     Finds the ADDITIONAL traditional withdrawal X (0 <= X <= available) whose
     AFTER-TAX proceeds equal target_net, given the ordinary income already in
     place (base_fed_income for federal; base_state_withdrawal as the
     retirement-withdrawal-income component for state) before X is added. After-tax
     proceeds are monotonically increasing in X regardless of whether the state is
-    graduated (WI), flat (IL/IN), or exempts retirement withdrawals entirely
+    graduated (WI/SC), flat (IL/IN/MI), or exempts retirement withdrawals entirely
     (IL/FL) - solved via bisection rather than a closed form so it stays correct
-    across all of those shapes without a state-specific formula. Returns
-    (X, net_achieved) - net_achieved may be less than target_net if `available`
-    isn't enough to cover it; the caller's existing remaining_need/depleted_at
-    tracking handles that shortfall the same way it always has.
+    across all of those shapes without a state-specific formula. `age` is passed
+    through for states whose deduction depends on it (SC) - unused by the rest.
+    Returns (X, net_achieved) - net_achieved may be less than target_net if
+    `available` isn't enough to cover it; the caller's existing remaining_need/
+    depleted_at tracking handles that shortfall the same way it always has.
     """
     if available <= 0 or target_net <= 0:
         return 0.0, 0.0
 
     base_fed_tax = tax_tables.federal_tax(base_fed_income, filing_status)
     base_state_tax = tax_tables.state_tax(
-        state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal)
+        state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal, age=age)
 
     def net_at(x):
         fed_tax = tax_tables.federal_tax(base_fed_income + x, filing_status)
         state_tax = tax_tables.state_tax(
-            state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal + x)
+            state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal + x, age=age)
         return x - (fed_tax - base_fed_tax) - (state_tax - base_state_tax)
 
     if net_at(available) <= target_net:
@@ -222,7 +223,7 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             base_fed_tax = tax_tables.federal_tax(base_ordinary_fed, current_filing)
             base_state_tax = tax_tables.state_tax(
                 state_in_retirement, current_filing,
-                wage_income=0.0, retirement_withdrawal_income=withdrawal_trad)
+                wage_income=0.0, retirement_withdrawal_income=withdrawal_trad, age=age)
             base_after_tax_cash = (withdrawal_trad + ss_income) - base_fed_tax - base_state_tax
 
             remaining_need = max(0.0, spending - base_after_tax_cash)
@@ -248,6 +249,7 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
                     filing_status=current_filing,
                     state=state_in_retirement,
                     available=available_extra_trad,
+                    age=age,
                 )
                 withdrawal_trad += extra_trad
                 remaining_need -= net_from_extra_trad
@@ -279,12 +281,12 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
         fed_tax = tax_tables.federal_tax(ordinary_income_fed, current_filing)
         state_tax_amt = tax_tables.state_tax(
             state_this_year, current_filing,
-            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state)
+            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state, age=age)
         ltcg_tax = withdrawal_taxable * ltcg_gain_fraction * tax_tables.LTCG_COMBINED_RATE
         marginal_fed = tax_tables.federal_marginal_rate(ordinary_income_fed, current_filing)
         marginal_state = tax_tables.state_marginal_rate(
             state_this_year, current_filing,
-            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state)
+            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state, age=age)
         total_tax = fed_tax + state_tax_amt + ltcg_tax
 
         if excess_rmd > 0:

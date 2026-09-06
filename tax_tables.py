@@ -55,6 +55,23 @@ against live WI DOR Form 1 2025 instructions, read directly off the PDF by the u
   top of the state rate, varies by county) - a documented scope limit.
 - FL (Florida): no state individual income tax at all (constitutionally prohibited).
   Implemented as an explicit always-zero function rather than left unsupported.
+- MI (Michigan): HIGH CONFIDENCE for the PERMANENT rule (verified against
+  michigan.gov/taxes 2025/2026 figures) - flat 4.25%, a $5,800/$11,600 personal
+  exemption, and a SEPARATE retirement-income deduction ($67,610/$135,220) that
+  takes full effect in the 2026 tax year. Does NOT model Michigan's 2023-2025
+  birth-year-tiered transitional phase-in (a household using this tool for a
+  forward projection will mostly be retired after the permanent rule applies) -
+  a documented scope choice, not an oversight, and worth revisiting if this tool
+  is ever used for someone retiring imminently under the old tiers.
+- SC (South Carolina): HIGH CONFIDENCE, verified against dor.sc.gov 2025 figures.
+  Graduated brackets 0%/3%/6% (only 3 brackets). The first state this tool
+  supports with an AGE-dependent rule, not just an income-type-dependent one: a
+  retirement income deduction ($3,000/yr under 65, $10,000/yr at 65+) plus a
+  SEPARATE $15,000 general deduction at 65+ that's reduced dollar-for-dollar by
+  whatever retirement deduction was claimed (combined cap $15,000/person either
+  way). MFJ doubles both figures - an approximation, since this tool doesn't
+  split income by spouse and so can't know whether both spouses actually have
+  retirement income to claim the deduction against.
 """
 
 # (lower bound, rate) pairs, cumulative bracket style. Federal, approx 2026 current law.
@@ -111,7 +128,7 @@ def wi_standard_deduction(ordinary_income, filing_status):
     return flat_amount - slope * (ordinary_income - phaseout_start)
 
 
-def wi_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def wi_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     """WI taxes wage and retirement-withdrawal income identically as ordinary income."""
     brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
     ordinary_income = wage_income + retirement_withdrawal_income
@@ -119,7 +136,7 @@ def wi_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
     return _progressive_tax(taxable, brackets)
 
 
-def wi_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def wi_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
     ordinary_income = wage_income + retirement_withdrawal_income
     taxable = max(0.0, ordinary_income - wi_standard_deduction(ordinary_income, filing_status))
@@ -133,7 +150,7 @@ IL_PERSONAL_EXEMPTION = {"MFJ": 5_700, "SINGLE": 2_850}
 IL_EXEMPTION_PHASEOUT_AGI = {"MFJ": 500_000, "SINGLE": 250_000}
 
 
-def il_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def il_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     """
     retirement_withdrawal_income is accepted for interface parity with wi_tax() but
     has NO effect on the result other than via the exemption phase-out test below -
@@ -147,7 +164,7 @@ def il_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
     return taxable * IL_FLAT_RATE
 
 
-def il_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def il_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     # This engine only ever calls with one income type populated at a time (wages
     # during accumulation, retirement withdrawals during decumulation - see
     # engine.py), so "is there wage income at all" is an unambiguous proxy for
@@ -166,13 +183,13 @@ IN_FLAT_RATE = 0.0305
 IN_PERSONAL_EXEMPTION = {"MFJ": 2_000, "SINGLE": 1_000}
 
 
-def in_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def in_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     ordinary_income = wage_income + retirement_withdrawal_income
     taxable = max(0.0, ordinary_income - IN_PERSONAL_EXEMPTION[filing_status])
     return taxable * IN_FLAT_RATE
 
 
-def in_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def in_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     return IN_FLAT_RATE if (wage_income + retirement_withdrawal_income) > 0 else 0.0
 
 
@@ -180,17 +197,85 @@ def in_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_incom
 # Included as an explicit zero-rate implementation, not an omission, so a household
 # planning to retire there gets a real (verified-true) answer instead of an
 # unsupported-state error.
-def fl_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def fl_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     return 0.0
 
 
-def fl_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def fl_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     return 0.0
+
+
+# Michigan: flat rate plus TWO separate deductions - a generic personal exemption
+# (applies to all income) and a deduction specific to retirement/pension income
+# (applies only to retirement_withdrawal_income). Uses the PERMANENT rule that
+# takes full effect in 2026 (a single cap, no birth-year tiers) rather than
+# modeling the now-largely-expired 2023-2025 transitional phase-in - a household
+# using this tool for a forward multi-year/multi-decade projection will mostly be
+# retired well after the permanent rule applies, so the transitional tiers would
+# add real complexity for years this tool's own projections barely reach.
+MI_FLAT_RATE = 0.0425
+MI_PERSONAL_EXEMPTION = {"MFJ": 11_600, "SINGLE": 5_800}
+MI_RETIREMENT_DEDUCTION = {"MFJ": 135_220, "SINGLE": 67_610}
+
+
+def mi_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
+    income_after_retirement_deduction = (
+        wage_income + max(0.0, retirement_withdrawal_income - MI_RETIREMENT_DEDUCTION[filing_status]))
+    taxable = max(0.0, income_after_retirement_deduction - MI_PERSONAL_EXEMPTION[filing_status])
+    return taxable * MI_FLAT_RATE
+
+
+def mi_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
+    return MI_FLAT_RATE if (wage_income + retirement_withdrawal_income) > 0 else 0.0
+
+
+# South Carolina: graduated brackets (0%/3%/6%, only 3 brackets - simpler than
+# WI's 4), plus an AGE-based retirement income deduction ($3,000/yr under 65,
+# $10,000/yr at 65+) and a SEPARATE $15,000 general deduction for 65+ that is
+# reduced dollar-for-dollar by whatever retirement deduction was claimed (so the
+# combined benefit from both deductions is always capped at $15,000/person once
+# 65+, regardless of how it's split between them). This is the first state this
+# tool supports whose rate depends on AGE, not just income type - state_tax()/
+# state_marginal_rate() and every state function above now accept an `age`
+# parameter for this reason (unused by WI/IL/IN/FL/MI, always 0 by their default).
+# For MFJ, the per-person retirement deduction and the $15,000 age deduction are
+# both DOUBLED (household cap = 2x the per-person figure) - an approximation,
+# since this tool doesn't split income by spouse and so cannot know whether both
+# spouses actually have retirement income of their own to claim it against; this
+# may overstate the deduction if only one spouse does.
+SC_BRACKETS = [(0, 0.00), (3_560, 0.03), (17_830, 0.06)]
+SC_RETIREMENT_DEDUCTION_UNDER_65 = 3_000
+SC_RETIREMENT_DEDUCTION_65_PLUS = 10_000
+SC_AGE_65_GENERAL_DEDUCTION = 15_000
+
+
+def _sc_deductions(filing_status, retirement_withdrawal_income, age):
+    per_person_cap = SC_RETIREMENT_DEDUCTION_65_PLUS if age >= 65 else SC_RETIREMENT_DEDUCTION_UNDER_65
+    household_cap = per_person_cap * (2 if filing_status == "MFJ" else 1)
+    retirement_deduction = min(retirement_withdrawal_income, household_cap)
+    if age >= 65:
+        age_deduction_cap = SC_AGE_65_GENERAL_DEDUCTION * (2 if filing_status == "MFJ" else 1)
+        age_deduction = max(0.0, age_deduction_cap - retirement_deduction)
+    else:
+        age_deduction = 0.0
+    return retirement_deduction, age_deduction
+
+
+def sc_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
+    retirement_deduction, age_deduction = _sc_deductions(filing_status, retirement_withdrawal_income, age)
+    taxable = max(0.0, wage_income + retirement_withdrawal_income - retirement_deduction - age_deduction)
+    return _progressive_tax(taxable, SC_BRACKETS)
+
+
+def sc_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
+    retirement_deduction, age_deduction = _sc_deductions(filing_status, retirement_withdrawal_income, age)
+    taxable = max(0.0, wage_income + retirement_withdrawal_income - retirement_deduction - age_deduction)
+    return _marginal_rate(taxable, SC_BRACKETS)
 
 
 # Per-state (tax_fn, marginal_rate_fn) pairs, each accepting
-# (filing_status, wage_income=0.0, retirement_withdrawal_income=0.0). Add a new
-# state here (plus its own verified constants/functions above) to support it -
+# (filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0). Add a
+# new state here (plus its own verified constants/functions above) to support it -
 # see README "Planned state additions" for the backlog and required verification
 # standard (a live Department-of-Revenue source, not a third-party summary).
 STATE_TAX_FUNCS = {
@@ -198,25 +283,27 @@ STATE_TAX_FUNCS = {
     "IL": (il_tax, il_marginal_rate),
     "IN": (in_tax, in_marginal_rate),
     "FL": (fl_tax, fl_marginal_rate),
+    "MI": (mi_tax, mi_marginal_rate),
+    "SC": (sc_tax, sc_marginal_rate),
 }
 
 
-def state_tax(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def state_tax(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     if state not in STATE_TAX_FUNCS:
         raise ValueError(f"No state tax rules implemented for '{state}'. "
                           f"Supported: {sorted(STATE_TAX_FUNCS)}.")
     tax_fn, _ = STATE_TAX_FUNCS[state]
     return tax_fn(filing_status, wage_income=wage_income,
-                  retirement_withdrawal_income=retirement_withdrawal_income)
+                  retirement_withdrawal_income=retirement_withdrawal_income, age=age)
 
 
-def state_marginal_rate(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+def state_marginal_rate(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0, age=0):
     if state not in STATE_TAX_FUNCS:
         raise ValueError(f"No state tax rules implemented for '{state}'. "
                           f"Supported: {sorted(STATE_TAX_FUNCS)}.")
     _, marginal_fn = STATE_TAX_FUNCS[state]
     return marginal_fn(filing_status, wage_income=wage_income,
-                        retirement_withdrawal_income=retirement_withdrawal_income)
+                        retirement_withdrawal_income=retirement_withdrawal_income, age=age)
 
 
 # Combined federal LTCG + WI effective rate for taxable-brokerage gains, per

@@ -72,7 +72,7 @@ against 2025 post-OBBBA law).
 
 ## Supported states
 
-Four states are implemented, each verified against a live Department of Revenue
+Six states are implemented, each verified against a live Department of Revenue
 source (not a third-party summary):
 
 - **Wisconsin** - graduated brackets 3.5%-7.65%, a standard deduction that phases
@@ -92,18 +92,29 @@ source (not a third-party summary):
   rate, varies by county).
 - **Florida** - no state individual income tax at all (constitutionally
   prohibited). Implemented as an explicit zero-rate state, not left unsupported.
+- **Michigan** - flat 4.25%, a personal exemption ($5,800/$11,600 MFJ), PLUS a
+  separate, much larger deduction specific to retirement/pension income
+  ($67,610/$135,220 MFJ) - the permanent rule taking full effect in the 2026 tax
+  year. Does not model Michigan's now-largely-expired 2023-2025 birth-year-tiered
+  phase-in, since a forward multi-decade projection mostly lands after the
+  permanent rule applies anyway.
+- **South Carolina** - graduated brackets 0%/3%/6% (only 3 brackets), plus the
+  first AGE-dependent rule this tool supports: a retirement income deduction
+  ($3,000/yr under 65, $10,000/yr at 65+) and a separate $15,000 general
+  deduction at 65+ that's reduced dollar-for-dollar by whatever retirement
+  deduction was claimed (combined benefit always caps at $15,000/person once
+  65+). MFJ doubles both figures - an approximation, since this tool doesn't
+  split income by spouse and can't know whether both spouses actually have
+  retirement income of their own to claim it against.
 
 You can set a different state for the working years (`state`) than retirement
 (`stateInRetirement`) - useful for a planned relocation.
 
-**Planned additions (not yet built):** Michigan and South Carolina - see
-`tax_tables.py`'s `STATE_TAX_FUNCS` for how a new state plugs in. Each needs its
-own schedule verified against that state's live Department of Revenue source
-before being added, the same treatment every state above got. Both have
-income-type-dependent rules (an age/birth-year-based retirement income deduction)
-similar in spirit to Illinois's exemption, so the `wage_income`/
-`retirement_withdrawal_income` split already built should carry over directly
-rather than needing another architecture change.
+Every state function now accepts `age` (unused by WI/IL/IN/FL/MI, meaningful only
+for South Carolina) - see `tax_tables.STATE_TAX_FUNCS` for how a new state plugs
+into `state_tax()`/`state_marginal_rate()`. Adding one requires its own schedule
+verified against that state's live Department of Revenue source, the same
+treatment every state above got.
 
 ## Sensitivity tools
 
@@ -135,6 +146,12 @@ python -m http.server 8000
 
 Once this repo is public, the same page can be hosted for free on GitHub Pages
 with no server of your own required.
+
+## License
+
+[MIT](LICENSE) - use it, modify it, share it. Provided as-is with no warranty;
+see "Known scope limits" above and the license text for what that means in
+practice.
 
 **Status:** built 2026-09-05, verified end-to-end in plain CPython (the bridge
 function reproduces the CLI scripts' numbers exactly) and checked against Pyodide's
