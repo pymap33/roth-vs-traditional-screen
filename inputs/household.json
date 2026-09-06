@@ -1,0 +1,79 @@
+{
+  "_howToUse": "Copy this file to a new name (e.g. household.json, or household-smith.json) and replace every placeholder value below with your own numbers. Then edit the INPUT constant at the top of run_scenarios.py (and any other script you run) to point at your copy. Every field has a plain-language explanation in the matching entry of _fieldHelp below - read that before changing a value you're unsure about. See CLAUDE.md in this folder for the full modeling assumptions, known scope limits, and how sensitive results are to getting each input right (the 'Input Glossary' table there is the source this file's _fieldHelp is drawn from).",
+  "_asOf": "YYYY-MM-DD - the date your account balances below were pulled",
+  "_source": "Describe where your balances came from (brokerage export, 401k statement, etc.) and note anything excluded (e.g. an emergency fund not meant as retirement capital)",
+
+  "household": {
+    "filingStatus": "MFJ",
+    "_filingStatus_help": "\"MFJ\" (married filing jointly) or \"SINGLE\". Sets which federal/state bracket table applies.",
+    "state": "WI",
+    "_state_help": "Two-letter state you live in now. Only Wisconsin's tax tables are built into tax_tables.py today - using another state requires adding its bracket/deduction schedule there first.",
+    "stateInRetirement": "WI",
+    "_stateInRetirement_help": "State you expect to retire in, if different from `state`. If you plan to relocate to a no-income-tax state, that can be a bigger lever than the Roth/Traditional choice itself - this screen does not yet model a mid-projection state change, so set this to your best single assumption.",
+    "dependents": 0,
+    "_dependents_help": "Not currently used in the tax calculation (child tax credit is not modeled) - a known scope gap, not a design choice. Leave at 0 either way.",
+    "currentAge_primary": 40,
+    "_currentAge_primary_help": "Your current age.",
+    "targetRetirementAge": 65,
+    "_targetRetirementAge_help": "Age you plan to stop working / start drawing down accounts. More years before this age means more compounding before RMDs are forced at 73 - the return-rate sensitivity test in this tool's CLAUDE.md shows this effect gets stronger the more compounding happens.",
+    "assumeZeroSocialSecurity": true,
+    "_assumeZeroSocialSecurity_help": "true if your planning stance is to self-fund retirement without counting on Social Security. false to model an assumed benefit using the socialSecurity block below.",
+    "legacyIntent": "undetermined",
+    "_legacyIntent_help": "\"spend-down\", \"legacy\", \"balanced\", or \"undetermined\". Determines which output view gets top billing (when money runs out vs. what's left as a bequest) - doesn't change which contribution split wins, just which numbers are headlined. \"undetermined\" is a fine honest default and shows both views.",
+    "knownFutureFilingStatusChange": false,
+    "_knownFutureFilingStatusChange_help": "Leave false unless you have a specific, known future change in mind (not currently wired to change engine behavior - the widow/widower stress scenario in run_scenarios.py is the tool's only built-in filing-status-change test)."
+  },
+
+  "socialSecurity": {
+    "_note": "Only used if household.assumeZeroSocialSecurity is false.",
+    "estimatedAnnualBenefit_householdTotal_todaysDollars": 0,
+    "_estimatedAnnualBenefit_help": "Household-total annual Social Security benefit, in today's dollars, if you expect to receive it. Get this from ssa.gov/myaccount rather than guessing - it materially changes results if assumeZeroSocialSecurity is false.",
+    "claimingAge": 67,
+    "_claimingAge_help": "Age you'll start claiming. Must be at or after targetRetirementAge above - claiming while still working requires modeling the SS earnings test (benefits withheld above an income threshold), which this tool does not do; the engine will silently push a lower value up to targetRetirementAge rather than produce a wrong number for that combination."
+  },
+
+  "income": {
+    "currentHouseholdTaxableIncomeApprox": 100000,
+    "_currentHouseholdTaxableIncomeApprox_help": "Roughly what your household's taxable income is today, under your CURRENT Roth/traditional contribution split. Anchors the accumulation-phase tax calculation.",
+    "currentApproxMarginalFederalBracket": 0.22,
+    "_currentApproxMarginalFederalBracket_help": "Informational only - not read by the engine, just a sanity-check figure for you. The engine derives your actual marginal rate from tax_tables.py each year."
+  },
+
+  "balances": {
+    "_asOf": "YYYY-MM-DD - the date these balances were pulled",
+    "_help": "Current balance in each account type. This is the biggest single driver of the dollar outcome - get it right before anything else. traditional401k/traditionalIRA are pre-tax; roth401k/rothIRA are Roth; taxableBrokerage is a regular (non-retirement) investment account. Do not include any emergency fund or cash reserve you consider off-limits to retirement spending - see excludedAssets below for how to handle that.",
+    "traditional401k": 0,
+    "roth401k": 0,
+    "traditionalIRA_acct1": 0,
+    "rothIRA_acct1": 0,
+    "taxableBrokerage_acct1": 0,
+
+    "totals": {
+      "_help": "Sum of every traditional/Roth/taxable balance above. The engine reads from these totals, not the individual account lines - the individual lines are for your own bookkeeping. Recompute these totals if you add or change any account line.",
+      "traditional_all": 0,
+      "roth_all": 0,
+      "taxable_all": 0
+    }
+  },
+
+  "contributions_annual": {
+    "roth401k_employee": 0,
+    "employerMatchPlusBoost_preTax": 0,
+    "notes": "How much you and your employer put in each year, and how it splits Roth vs. pre-tax today. The employer piece is usually locked pre-tax by plan rules regardless of your own choice - don't assume you can toggle it. This is the amount whose Roth/traditional SPLIT the tool's scenarios vary (0%, 25%, 50%, 100% traditional, or whatever you set up in your own scenario list)."
+  },
+
+  "excludedAssets": {
+    "emergencyFund": {
+      "amount": 0,
+      "account": "describe where this lives, e.g. \"separate high-yield savings account\"",
+      "treatment": "Excluded from all scenario balances/withdrawals. Any money that's a safety net rather than retirement capital must be explicitly excluded here, or the screen will overstate available capital and understate real risk - set amount to 0 if you don't have a separate emergency fund to exclude."
+    }
+  },
+
+  "retirementSpending": {
+    "status": "provisional - replace with your own derivation before trusting results",
+    "annualSpendingTarget_todaysDollars": 60000,
+    "excludesHousingPayment": false,
+    "notes": "Roughly what you expect to spend per year in retirement, in today's dollars, excluding anything unusual (e.g. a mortgage payment you won't have by then). This is usually the softest number you'll supply and deserves the most follow-up, not the least - if you have a mortgage that will be paid off before retirement, set excludesHousingPayment to true and make sure this figure genuinely excludes that payment. Watch for one-time or backlog expenses (a recent home purchase's deferred maintenance, a major one-off project) inflating a naive average of recent actual spending - back those out before settling on a steady-state figure, as this tool's own household did (see CLAUDE.md 'Retirement spending figure refined' section for a worked example)."
+  }
+}
