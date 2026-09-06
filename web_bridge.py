@@ -32,7 +32,17 @@ def run_all_scenarios(household_json, real_return, withdrawal_strategy,
     the browser side never touches a Python object directly, only this JSON.
     """
     hh = json.loads(household_json)
-    widow_age = int(widow_at_age) if widow_at_age not in (None, "", 0) else None
+    # widow_at_age arrives from JS - could be a real number, an empty string, 0,
+    # Python None, or (for JS `null` specifically) a JsNull proxy object that
+    # is-not and does-not-equal Python None. Rather than enumerate every falsy
+    # shape JS might send, just try the conversion and treat any failure or
+    # zero as "no widow stress case requested".
+    try:
+        widow_age = int(widow_at_age)
+    except (TypeError, ValueError):
+        widow_age = None
+    if widow_age == 0:
+        widow_age = None
 
     results = []
     for name, roth_fraction in SCENARIOS:
