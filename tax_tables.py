@@ -165,8 +165,16 @@ def wi_marginal_rate(ordinary_income, filing_status):
     return _marginal_rate(taxable, brackets)
 
 
-def rmd_divisor(age):
-    if age < 73:
+def rmd_divisor(age, rmd_start_age=73):
+    """
+    rmd_start_age is configurable because SECURE 2.0 already legislated a future
+    change (73 for those turning 72 in 2023-2032, then 75 starting 2033) - a
+    household closer to that boundary may want to test both. The divisor VALUES
+    below don't change with the start age - the IRS Uniform Lifetime Table maps a
+    given age to a given divisor regardless of when RMDs first became mandatory for
+    that person - only the age at which withdrawals start being forced changes.
+    """
+    if age < rmd_start_age:
         return None
     return RMD_DIVISORS.get(age, RMD_DIVISORS[max(RMD_DIVISORS)])
 

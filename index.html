@@ -25,6 +25,18 @@
   </div>
   <div id="load-error" class="status-banner status-error" hidden></div>
 
+  <div id="profile-controls" class="profile-controls" hidden>
+    <button type="button" id="save-profile-btn">Save my numbers in this browser</button>
+    <button type="button" id="load-profile-btn">Load saved numbers</button>
+    <button type="button" id="clear-profile-btn">Clear saved numbers</button>
+    <span id="profile-status" class="field-note"></span>
+    <p class="field-note">
+      Stored only in this browser (localStorage) — never sent anywhere, and not
+      visible from a different browser or device. Clearing your browser's site
+      data for this page will also erase it.
+    </p>
+  </div>
+
   <form id="household-form" hidden>
     <fieldset>
       <legend>Household</legend>
@@ -169,6 +181,37 @@
           <input type="number" id="widowAge" min="0" max="105" value="" placeholder="leave blank to skip">
           <p class="field-note">Simulates the survivor dropping to single-filer brackets on the same income, starting at this age.</p>
         </div>
+        <div class="field-row">
+          <label for="rmdStartAge">RMD start age</label>
+          <input type="number" id="rmdStartAge" min="70" max="80" value="73">
+          <p class="field-note">
+            Current law: 73 (2023-2032), rising to 75 starting 2033 under SECURE
+            2.0. If you expect to still be under 75 when that change applies to
+            you, try both and compare.
+          </p>
+        </div>
+        <div class="field-row">
+          <label for="customTraditionalPct">Add a custom split: traditional share (%, optional)</label>
+          <input type="number" id="customTraditionalPct" min="0" max="100" step="5" value="" placeholder="e.g. 60 for 60% traditional / 40% Roth">
+          <p class="field-note">Adds one extra scenario at exactly this split, alongside the five fixed ones.</p>
+        </div>
+        <div class="field-row">
+          <label for="dollarDisplay">Show dollar amounts as</label>
+          <select id="dollarDisplay">
+            <option value="real" selected>Today's dollars (real)</option>
+            <option value="nominal">Future/nominal dollars (inflated)</option>
+          </select>
+        </div>
+        <div class="field-row" id="inflation-rate-row" hidden>
+          <label for="inflationRate">Assumed annual inflation rate</label>
+          <input type="number" id="inflationRate" min="0" max="0.10" step="0.005" value="0.03">
+          <p class="field-note">
+            Only affects how results are DISPLAYED — converts each year's real
+            (today's-dollar) figure to what that many future dollars would look
+            like at this inflation rate. The underlying engine always computes in
+            real dollars; nothing about the comparison itself changes.
+          </p>
+        </div>
       </fieldset>
     </details>
 
@@ -186,6 +229,18 @@
     </p>
     <div id="chart"></div>
     <div id="results-table"></div>
+
+    <h2>Year-by-year detail</h2>
+    <div class="field-row">
+      <label for="ledger-scenario-select">Scenario</label>
+      <select id="ledger-scenario-select"></select>
+      <button type="button" id="download-csv-btn">Download this scenario's ledger (CSV)</button>
+    </div>
+    <p class="field-note">
+      Balance by account type over time for the selected scenario — shows WHEN
+      traditional depletes or RMDs kick in, not just the final number.
+    </p>
+    <div id="ledger-chart"></div>
   </section>
 </main>
 

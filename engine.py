@@ -76,7 +76,8 @@ def net_of_tax_wealth(final_row, ltcg_gain_fraction=0.60):
 
 def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
                   longevity_age=95, widow_at_age=None, scenario_name="",
-                  withdrawal_strategy="sequential", bracket_fill_target_rate=0.12):
+                  withdrawal_strategy="sequential", bracket_fill_target_rate=0.12,
+                  rmd_start_age=73):
     h = hh["household"]
     age = h["currentAge_primary"]
     retire_age = h["targetRetirementAge"]
@@ -125,7 +126,7 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             record["phase"] = "accumulation"
         else:
             record["phase"] = "decumulation"
-            divisor = tax_tables.rmd_divisor(age)
+            divisor = tax_tables.rmd_divisor(age, rmd_start_age=rmd_start_age)
             if divisor:
                 rmd_amt = trad / divisor
             ss_income = ss_annual_benefit if (ss_enabled and age >= ss_claiming_age) else 0.0

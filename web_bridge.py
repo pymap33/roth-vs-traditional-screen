@@ -5,17 +5,20 @@ Deliberately thin: every line of actual tax/RMD/withdrawal logic lives in
 engine.py and tax_tables.py, which this module imports and calls unchanged.
 This file exists only to (a) accept a JSON string from JS, (b) call
 engine.run_scenario() once per contribution-split scenario, and (c) shape the
-results back into a JSON-serializable list, so the JS side never has to know
+results back into JSON/CSV for the page, so the JS side never has to know
 Python data structures. Adding logic here that isn't pure orchestration would
 recreate the exact "second implementation to drift out of sync" problem this
 whole Pyodide approach was chosen to avoid - see CLAUDE.md in the KB copy of
 this project ("Delivery format decision") for that reasoning.
 """
 
+import csv
+import io
 import json
+
 import engine
 
-SCENARIOS = [
+FIXED_SCENARIOS = [
     ("100% Roth", 1.00),
     ("75% Roth / 25% Traditional", 0.75),
     ("50% Roth / 50% Traditional", 0.50),
@@ -23,29 +26,50 @@ SCENARIOS = [
     ("100% Traditional", 0.00),
 ]
 
+# Populated fresh by every run_all_scenarios() call: scenario name -> full ledger
+# (list of per-year dicts). Kept so the chart and CSV-export features can pull a
+# specific scenario's year-by-year detail without re-running the engine - the
+# summary numbers returned to JS are a small slice of this, not a duplicate of it.
+_LAST_LEDGERS = {}
+
+
+def _to_optional_int(value):
+    """
+    Converts a value that may be a real number, a numeric string, Python None, an
+    empty string, or (for JS `null` specifically) a Pyodide JsNull proxy that is
+    not and does not equal Python None - into an int or None. Used for any
+    optional integer field coming from the browser form.
+    """
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return None
+    return None if result == 0 else result
+
 
 def run_all_scenarios(household_json, real_return, withdrawal_strategy,
-                       bracket_fill_target_rate, longevity_age, widow_at_age):
+                       bracket_fill_target_rate, longevity_age, widow_at_age,
+                       rmd_start_age=73, custom_traditional_pct=None):
     """
-    Runs every scenario in SCENARIOS against one household + one set of
-    engine-level assumptions, and returns a JSON string (a list of dicts) -
-    the browser side never touches a Python object directly, only this JSON.
+    Runs the five fixed contribution-split scenarios, plus one custom split if
+    custom_traditional_pct is given (0-100, share going to traditional), against
+    one household + one set of engine-level assumptions. Returns a JSON string
+    (a list of summary dicts) - the browser side never touches a Python object
+    directly. Full ledgers are cached in _LAST_LEDGERS for get_ledger_csv/
+    get_ledger_json to pull from afterward.
     """
     hh = json.loads(household_json)
-    # widow_at_age arrives from JS - could be a real number, an empty string, 0,
-    # Python None, or (for JS `null` specifically) a JsNull proxy object that
-    # is-not and does-not-equal Python None. Rather than enumerate every falsy
-    # shape JS might send, just try the conversion and treat any failure or
-    # zero as "no widow stress case requested".
-    try:
-        widow_age = int(widow_at_age)
-    except (TypeError, ValueError):
-        widow_age = None
-    if widow_age == 0:
-        widow_age = None
+    widow_age = _to_optional_int(widow_at_age)
+    rmd_age = _to_optional_int(rmd_start_age) or 73
 
+    scenarios = list(FIXED_SCENARIOS)
+    custom_pct = _to_optional_int(custom_traditional_pct)
+    if custom_pct is not None and 0 <= custom_pct <= 100:
+        scenarios.append((f"Custom: {custom_pct}% Traditional", 1 - custom_pct / 100))
+
+    _LAST_LEDGERS.clear()
     results = []
-    for name, roth_fraction in SCENARIOS:
+    for name, roth_fraction in scenarios:
         ledger, depleted_at = engine.run_scenario(
             hh, roth_fraction,
             real_return=real_return,
@@ -54,7 +78,10 @@ def run_all_scenarios(household_json, real_return, withdrawal_strategy,
             scenario_name=name,
             withdrawal_strategy=withdrawal_strategy,
             bracket_fill_target_rate=bracket_fill_target_rate,
+            rmd_start_age=rmd_age,
         )
+        _LAST_LEDGERS[name] = ledger
+
         final_row = ledger[-1]
         net_wealth, liquidation_rate = engine.net_of_tax_wealth(final_row)
         lifetime_tax = sum(r["total_tax"] for r in ledger)
@@ -79,3 +106,33 @@ def run_all_scenarios(household_json, real_return, withdrawal_strategy,
 
     results.sort(key=lambda r: -r["net_of_tax_wealth"])
     return json.dumps(results)
+
+
+def get_ledger_json(scenario_name):
+    """Full per-year ledger for one scenario from the last run_all_scenarios() call."""
+    return json.dumps(_LAST_LEDGERS.get(scenario_name, []))
+
+
+def get_ledger_csv(scenario_name):
+    """
+    Same fieldnames-union + DictWriter approach run_scenarios.py uses for its CSV
+    output, just written to an in-memory buffer instead of a file so the browser
+    can offer it as a download.
+    """
+    ledger = _LAST_LEDGERS.get(scenario_name, [])
+    if not ledger:
+        return ""
+    fieldnames = []
+    for row in ledger:
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(ledger)
+    return buf.getvalue()
+
+
+def list_scenario_names():
+    return json.dumps(list(_LAST_LEDGERS.keys()))
