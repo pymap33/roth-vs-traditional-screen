@@ -46,6 +46,15 @@ against live WI DOR Form 1 2025 instructions, read directly off the PDF by the u
   marginal-rate counterparts take SEPARATE wage_income and retirement_withdrawal_income
   arguments rather than one blended "ordinary_income" figure the way the pre-IL version
   of this file did - see state_tax()/state_marginal_rate() below for the dispatch.
+- IN (Indiana): HIGH CONFIDENCE, verified against in.gov/dor 2025 figures. Flat
+  3.05% (scheduled to drop to 2.95% for 2026 - not yet reflected here, re-check
+  before 2026 filings matter). $1,000/exemption flat deduction, NO income-based
+  phase-out (unlike Illinois's cliff). UNLIKE Illinois, Indiana taxes retirement-
+  account withdrawals the same as wages - only Social Security is exempt, same as
+  every other state this tool supports. Does NOT model county income tax (levied on
+  top of the state rate, varies by county) - a documented scope limit.
+- FL (Florida): no state individual income tax at all (constitutionally prohibited).
+  Implemented as an explicit always-zero function rather than left unsupported.
 """
 
 # (lower bound, rate) pairs, cumulative bracket style. Federal, approx 2026 current law.
@@ -146,6 +155,39 @@ def il_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_incom
     return IL_FLAT_RATE if wage_income > 0 else 0.0
 
 
+# Indiana: flat rate like Illinois, but UNLIKE Illinois it taxes retirement-account
+# withdrawals the same as wages (only Social Security is exempt, which - like every
+# state this tool supports - never enters the state base at all, handled upstream in
+# engine.py). A flat $1,000/exemption deduction applies with no income-based
+# phase-out (unlike Illinois's cliff). 2025 rate; scheduled to drop to 2.95% for 2026.
+# Excludes county income tax (levied on top of the state rate, varies by county) -
+# a documented scope limit, not an oversight.
+IN_FLAT_RATE = 0.0305
+IN_PERSONAL_EXEMPTION = {"MFJ": 2_000, "SINGLE": 1_000}
+
+
+def in_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    ordinary_income = wage_income + retirement_withdrawal_income
+    taxable = max(0.0, ordinary_income - IN_PERSONAL_EXEMPTION[filing_status])
+    return taxable * IN_FLAT_RATE
+
+
+def in_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    return IN_FLAT_RATE if (wage_income + retirement_withdrawal_income) > 0 else 0.0
+
+
+# Florida: no state individual income tax at all (constitutionally prohibited).
+# Included as an explicit zero-rate implementation, not an omission, so a household
+# planning to retire there gets a real (verified-true) answer instead of an
+# unsupported-state error.
+def fl_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    return 0.0
+
+
+def fl_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    return 0.0
+
+
 # Per-state (tax_fn, marginal_rate_fn) pairs, each accepting
 # (filing_status, wage_income=0.0, retirement_withdrawal_income=0.0). Add a new
 # state here (plus its own verified constants/functions above) to support it -
@@ -154,6 +196,8 @@ def il_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_incom
 STATE_TAX_FUNCS = {
     "WI": (wi_tax, wi_marginal_rate),
     "IL": (il_tax, il_marginal_rate),
+    "IN": (in_tax, in_marginal_rate),
+    "FL": (fl_tax, fl_marginal_rate),
 }
 
 

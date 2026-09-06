@@ -70,6 +70,47 @@ def load_household(path):
         return json.load(f)
 
 
+def _solve_traditional_gross_up(target_net, base_fed_income, base_state_withdrawal,
+                                 filing_status, state, available):
+    """
+    Finds the ADDITIONAL traditional withdrawal X (0 <= X <= available) whose
+    AFTER-TAX proceeds equal target_net, given the ordinary income already in
+    place (base_fed_income for federal; base_state_withdrawal as the
+    retirement-withdrawal-income component for state) before X is added. After-tax
+    proceeds are monotonically increasing in X regardless of whether the state is
+    graduated (WI), flat (IL/IN), or exempts retirement withdrawals entirely
+    (IL/FL) - solved via bisection rather than a closed form so it stays correct
+    across all of those shapes without a state-specific formula. Returns
+    (X, net_achieved) - net_achieved may be less than target_net if `available`
+    isn't enough to cover it; the caller's existing remaining_need/depleted_at
+    tracking handles that shortfall the same way it always has.
+    """
+    if available <= 0 or target_net <= 0:
+        return 0.0, 0.0
+
+    base_fed_tax = tax_tables.federal_tax(base_fed_income, filing_status)
+    base_state_tax = tax_tables.state_tax(
+        state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal)
+
+    def net_at(x):
+        fed_tax = tax_tables.federal_tax(base_fed_income + x, filing_status)
+        state_tax = tax_tables.state_tax(
+            state, filing_status, wage_income=0.0, retirement_withdrawal_income=base_state_withdrawal + x)
+        return x - (fed_tax - base_fed_tax) - (state_tax - base_state_tax)
+
+    if net_at(available) <= target_net:
+        return available, net_at(available)
+
+    lo, hi = 0.0, available
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if net_at(mid) < target_net:
+            lo = mid
+        else:
+            hi = mid
+    return hi, net_at(hi)
+
+
 def net_of_tax_wealth(final_row, ltcg_gain_fraction=0.60):
     """
     Gross end_total adds three pools that are NOT tax-equivalent: traditional dollars
@@ -160,18 +201,61 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
                 paced_amt = trad / years_remaining
                 additional_trad = min(max(0.0, paced_amt - rmd_amt), available_beyond_rmd)
 
-            forced_income = rmd_amt + ss_income + additional_trad
+            # RMD (legally required) plus whatever the chosen strategy proactively
+            # withdraws beyond it - neither is sized to meet spending. Compute the
+            # actual AFTER-TAX cash these provide before deciding whether MORE
+            # withdrawal is needed, or whether there's an after-tax EXCESS to
+            # reinvest - a withdrawal that covers the gross spending figure isn't
+            # the same as one that nets it after tax, which the pre-v5 version of
+            # this engine conflated (a real gap, not a display issue - found
+            # 2026-09-06 while testing the state-tax feature, but it affects every
+            # state and every scenario, not just the state comparison).
             withdrawal_trad = rmd_amt + additional_trad
-            remaining_need = max(0.0, spending - forced_income)
-            excess_forced = max(0.0, forced_income - spending)
+            # SS taxability depends on OTHER ordinary income - computed once here
+            # from this base amount and held fixed through the rest of this year's
+            # solve below (documented approximation: further traditional withdrawal
+            # to cover remaining need could itself push more SS into being taxable,
+            # an iterative feedback loop this tool doesn't chase, consistent with
+            # the bracket-fill room calculation's existing same simplification).
+            taxable_ss = tax_tables.taxable_social_security(ss_income, withdrawal_trad, current_filing)
+            base_ordinary_fed = withdrawal_trad + taxable_ss
+            base_fed_tax = tax_tables.federal_tax(base_ordinary_fed, current_filing)
+            base_state_tax = tax_tables.state_tax(
+                state_in_retirement, current_filing,
+                wage_income=0.0, retirement_withdrawal_income=withdrawal_trad)
+            base_after_tax_cash = (withdrawal_trad + ss_income) - base_fed_tax - base_state_tax
 
-            withdrawal_taxable = min(remaining_need, taxable)
-            remaining_need -= withdrawal_taxable
-            extra_trad = min(remaining_need, max(0.0, trad - withdrawal_trad))
-            withdrawal_trad += extra_trad
-            remaining_need -= extra_trad
-            withdrawal_roth = min(remaining_need, roth)
-            remaining_need -= withdrawal_roth
+            remaining_need = max(0.0, spending - base_after_tax_cash)
+            excess_after_tax = max(0.0, base_after_tax_cash - spending)
+
+            # Cover any remaining need in the existing account-preference order
+            # (taxable brokerage, then more traditional, then Roth), GROSSING UP
+            # each source so the withdrawal actually NETS the dollars still needed
+            # after its own tax, rather than just matching the gross shortfall.
+            ltcg_rate_effective = ltcg_gain_fraction * tax_tables.LTCG_COMBINED_RATE
+            withdrawal_taxable = 0.0
+            if remaining_need > 0 and taxable > 0:
+                gross_needed = remaining_need / (1 - ltcg_rate_effective)
+                withdrawal_taxable = min(gross_needed, taxable)
+                remaining_need -= withdrawal_taxable * (1 - ltcg_rate_effective)
+
+            available_extra_trad = max(0.0, trad - withdrawal_trad)
+            if remaining_need > 0 and available_extra_trad > 0:
+                extra_trad, net_from_extra_trad = _solve_traditional_gross_up(
+                    target_net=remaining_need,
+                    base_fed_income=base_ordinary_fed,
+                    base_state_withdrawal=withdrawal_trad,
+                    filing_status=current_filing,
+                    state=state_in_retirement,
+                    available=available_extra_trad,
+                )
+                withdrawal_trad += extra_trad
+                remaining_need -= net_from_extra_trad
+
+            withdrawal_roth = 0.0
+            if remaining_need > 0:
+                withdrawal_roth = min(remaining_need, roth)
+                remaining_need -= withdrawal_roth
 
             if remaining_need > 0.01 and depleted_at is None:
                 depleted_at = age
@@ -181,16 +265,16 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             roth -= withdrawal_roth
             taxable -= withdrawal_taxable
 
-            # SS taxability depends on OTHER ordinary income (traditional withdrawals),
-            # not on itself - compute before adding it to the federal base. No state
-            # this tool supports taxes Social Security, so it never enters the state
-            # base regardless of federal treatment.
-            taxable_ss = tax_tables.taxable_social_security(ss_income, withdrawal_trad, current_filing)
+            # Recompute final ordinary income now that withdrawal_trad may have
+            # grown beyond the base (extra_trad added above). taxable_ss is NOT
+            # recomputed - see the documented approximation above.
             ordinary_income_fed = withdrawal_trad + taxable_ss
             wage_income_state = 0.0
             retirement_withdrawal_state = withdrawal_trad
             state_this_year = state_in_retirement
-            excess_rmd = excess_forced  # reinvested into taxable below, same treatment either source
+            # Already net-of-tax (computed from exact base_fed_tax/base_state_tax
+            # above) - reinvested directly below, no approximation needed.
+            excess_rmd = excess_after_tax
 
         fed_tax = tax_tables.federal_tax(ordinary_income_fed, current_filing)
         state_tax_amt = tax_tables.state_tax(
@@ -203,9 +287,8 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state)
         total_tax = fed_tax + state_tax_amt + ltcg_tax
 
-        if excess_rmd > 0 and ordinary_income_fed > 0:
-            avg_ordinary_tax_rate = (fed_tax + state_tax_amt) / ordinary_income_fed
-            taxable += excess_rmd * (1 - avg_ordinary_tax_rate)
+        if excess_rmd > 0:
+            taxable += excess_rmd
 
         trad = max(0.0, trad) * (1 + real_return)
         roth = max(0.0, roth) * (1 + real_return)

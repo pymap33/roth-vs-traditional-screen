@@ -52,6 +52,8 @@
         <select id="state">
           <option value="WI">Wisconsin</option>
           <option value="IL">Illinois</option>
+          <option value="IN">Indiana</option>
+          <option value="FL">Florida</option>
         </select>
       </div>
       <div class="field-row">
@@ -59,17 +61,18 @@
         <select id="stateInRetirement">
           <option value="WI">Wisconsin</option>
           <option value="IL">Illinois</option>
+          <option value="IN">Indiana</option>
+          <option value="FL">Florida</option>
         </select>
         <p class="field-note">
-          Only Wisconsin and Illinois are built into this tool today — Indiana,
-          Michigan, South Carolina, and Florida are planned but not yet added
-          (using any other state requires adding its rules to
-          <code>tax_tables.py</code> first; see the repository README).
-          Wisconsin taxes retirement-account withdrawals the same as wages;
-          Illinois exempts Social Security, pensions, and 401k/IRA withdrawals
-          from state tax entirely, taxing only wages at a flat 4.95%. If you
-          plan to relocate before or during retirement, set these two
-          differently — otherwise leave them the same.
+          Wisconsin and Indiana tax retirement-account withdrawals the same as
+          wages; Illinois and Florida exempt them entirely (Illinois taxes wages
+          at a flat 4.95%, Florida has no income tax at all). Michigan and South
+          Carolina are planned but not yet added — using any other state
+          requires adding its rules to <code>tax_tables.py</code> first; see the
+          repository README. If you plan to relocate before or during
+          retirement, set these two dropdowns differently — otherwise leave
+          them the same.
         </p>
       </div>
       <div class="field-row">

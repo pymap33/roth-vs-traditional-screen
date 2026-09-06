@@ -72,7 +72,7 @@ against 2025 post-OBBBA law).
 
 ## Supported states
 
-Two states are implemented, both verified against a live Department of Revenue
+Four states are implemented, each verified against a live Department of Revenue
 source (not a third-party summary):
 
 - **Wisconsin** - graduated brackets 3.5%-7.65%, a standard deduction that phases
@@ -85,20 +85,25 @@ source (not a third-party summary):
   state functions take separate `wage_income` and `retirement_withdrawal_income`
   arguments rather than one blended figure - a state can (and Illinois does) tax
   those two very differently.
+- **Indiana** - flat 3.05% (scheduled to drop to 2.95% for 2026, not yet reflected),
+  a flat $1,000/exemption deduction with no income-based phase-out. Unlike Illinois,
+  Indiana taxes retirement-account withdrawals the same as wages - only Social
+  Security is exempt. Does not model county income tax (levied on top of the state
+  rate, varies by county).
+- **Florida** - no state individual income tax at all (constitutionally
+  prohibited). Implemented as an explicit zero-rate state, not left unsupported.
 
 You can set a different state for the working years (`state`) than retirement
 (`stateInRetirement`) - useful for a planned relocation.
 
-**Planned additions (not yet built):** Indiana, Michigan, South Carolina, and
-Florida - see `tax_tables.py`'s `STATE_TAX_FUNCS` for how a new state plugs in.
-Each needs its own schedule verified against that state's live Department of
-Revenue source before being added, the same treatment WI and IL got. Florida has no
-state income tax, so it just needs a zero-rate implementation rather than a real
-bracket table. Michigan and South Carolina both have income-type-dependent rules
-(an age/birth-year-based retirement income deduction) similar in spirit to
-Illinois's exemption, so the `wage_income`/`retirement_withdrawal_income` split
-built for Illinois should carry over directly rather than needing another
-architecture change.
+**Planned additions (not yet built):** Michigan and South Carolina - see
+`tax_tables.py`'s `STATE_TAX_FUNCS` for how a new state plugs in. Each needs its
+own schedule verified against that state's live Department of Revenue source
+before being added, the same treatment every state above got. Both have
+income-type-dependent rules (an age/birth-year-based retirement income deduction)
+similar in spirit to Illinois's exemption, so the `wage_income`/
+`retirement_withdrawal_income` split already built should carry over directly
+rather than needing another architecture change.
 
 ## Sensitivity tools
 
