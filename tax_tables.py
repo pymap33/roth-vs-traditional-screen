@@ -32,6 +32,20 @@ against live WI DOR Form 1 2025 instructions, read directly off the PDF by the u
   Modeled here as a straight-line interpolation between the flat-amount ceiling and the
   $0 point, which is a reasonable approximation of WI's actual $100-increment table but
   not an exact replication of it.
+- IL (Illinois): HIGH CONFIDENCE, verified against tax.illinois.gov 2025 figures.
+  Illinois is a FLAT 4.95% tax, not brackets - but unlike Wisconsin, it completely
+  EXEMPTS retirement income (Social Security, pensions, 401k/IRA distributions) from
+  state tax entirely. Only wages/other non-retirement ordinary income are taxed. A
+  personal exemption ($2,850/exemption, $5,700 total for MFJ's two exemptions, 2025)
+  applies against the wage-income base, phasing out entirely above $500,000 federal
+  AGI (MFJ) / $250,000 (Single/HoH/MFS) - approximated here using wage_income +
+  retirement_withdrawal_income as an AGI proxy rather than exact federal AGI, since
+  the exemption itself is small enough relative to that threshold that the proxy's
+  imprecision is immaterial. This household-vs-income-type distinction (wage income
+  taxed, retirement withdrawal income exempt) is why wi_tax()/il_tax() and their
+  marginal-rate counterparts take SEPARATE wage_income and retirement_withdrawal_income
+  arguments rather than one blended "ordinary_income" figure the way the pre-IL version
+  of this file did - see state_tax()/state_marginal_rate() below for the dispatch.
 """
 
 # (lower bound, rate) pairs, cumulative bracket style. Federal, approx 2026 current law.
@@ -87,6 +101,80 @@ def wi_standard_deduction(ordinary_income, filing_status):
     slope = flat_amount / (zero_point - phaseout_start)
     return flat_amount - slope * (ordinary_income - phaseout_start)
 
+
+def wi_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    """WI taxes wage and retirement-withdrawal income identically as ordinary income."""
+    brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
+    ordinary_income = wage_income + retirement_withdrawal_income
+    taxable = max(0.0, ordinary_income - wi_standard_deduction(ordinary_income, filing_status))
+    return _progressive_tax(taxable, brackets)
+
+
+def wi_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
+    ordinary_income = wage_income + retirement_withdrawal_income
+    taxable = max(0.0, ordinary_income - wi_standard_deduction(ordinary_income, filing_status))
+    return _marginal_rate(taxable, brackets)
+
+
+# Illinois: flat rate, not brackets. Personal exemption phases out entirely above an
+# AGI threshold rather than shrinking gradually - a cliff, not a slope, unlike WI's.
+IL_FLAT_RATE = 0.0495
+IL_PERSONAL_EXEMPTION = {"MFJ": 5_700, "SINGLE": 2_850}
+IL_EXEMPTION_PHASEOUT_AGI = {"MFJ": 500_000, "SINGLE": 250_000}
+
+
+def il_tax(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    """
+    retirement_withdrawal_income is accepted for interface parity with wi_tax() but
+    has NO effect on the result other than via the exemption phase-out test below -
+    Illinois exempts Social Security, pensions, and 401k/IRA distributions from state
+    tax entirely, so only wage_income is ever actually taxed.
+    """
+    agi_proxy = wage_income + retirement_withdrawal_income
+    exemption = (IL_PERSONAL_EXEMPTION[filing_status]
+                 if agi_proxy <= IL_EXEMPTION_PHASEOUT_AGI[filing_status] else 0.0)
+    taxable = max(0.0, wage_income - exemption)
+    return taxable * IL_FLAT_RATE
+
+
+def il_marginal_rate(filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    # This engine only ever calls with one income type populated at a time (wages
+    # during accumulation, retirement withdrawals during decumulation - see
+    # engine.py), so "is there wage income at all" is an unambiguous proxy for
+    # "which type is the marginal dollar" in practice.
+    return IL_FLAT_RATE if wage_income > 0 else 0.0
+
+
+# Per-state (tax_fn, marginal_rate_fn) pairs, each accepting
+# (filing_status, wage_income=0.0, retirement_withdrawal_income=0.0). Add a new
+# state here (plus its own verified constants/functions above) to support it -
+# see README "Planned state additions" for the backlog and required verification
+# standard (a live Department-of-Revenue source, not a third-party summary).
+STATE_TAX_FUNCS = {
+    "WI": (wi_tax, wi_marginal_rate),
+    "IL": (il_tax, il_marginal_rate),
+}
+
+
+def state_tax(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    if state not in STATE_TAX_FUNCS:
+        raise ValueError(f"No state tax rules implemented for '{state}'. "
+                          f"Supported: {sorted(STATE_TAX_FUNCS)}.")
+    tax_fn, _ = STATE_TAX_FUNCS[state]
+    return tax_fn(filing_status, wage_income=wage_income,
+                  retirement_withdrawal_income=retirement_withdrawal_income)
+
+
+def state_marginal_rate(state, filing_status, wage_income=0.0, retirement_withdrawal_income=0.0):
+    if state not in STATE_TAX_FUNCS:
+        raise ValueError(f"No state tax rules implemented for '{state}'. "
+                          f"Supported: {sorted(STATE_TAX_FUNCS)}.")
+    _, marginal_fn = STATE_TAX_FUNCS[state]
+    return marginal_fn(filing_status, wage_income=wage_income,
+                        retirement_withdrawal_income=retirement_withdrawal_income)
+
+
 # Combined federal LTCG + WI effective rate for taxable-brokerage gains, per
 # memory/user_location_tax.md (18.71%). Held flat - does not vary by income here.
 LTCG_COMBINED_RATE = 0.1871
@@ -133,12 +221,6 @@ def federal_marginal_rate(ordinary_income, filing_status):
     return _marginal_rate(taxable, brackets)
 
 
-def wi_tax(ordinary_income, filing_status):
-    brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
-    taxable = max(0.0, ordinary_income - wi_standard_deduction(ordinary_income, filing_status))
-    return _progressive_tax(taxable, brackets)
-
-
 def bracket_ceiling_gross(target_rate, filing_status):
     """
     Gross ordinary income (i.e. before the standard deduction, matching how
@@ -157,12 +239,6 @@ def bracket_ceiling_gross(target_rate, filing_status):
             upper_taxable = brackets[i + 1][0]
             return upper_taxable + STANDARD_DEDUCTION[filing_status]
     return None
-
-
-def wi_marginal_rate(ordinary_income, filing_status):
-    brackets = WI_BRACKETS_MFJ if filing_status == "MFJ" else WI_BRACKETS_SINGLE
-    taxable = max(0.0, ordinary_income - wi_standard_deduction(ordinary_income, filing_status))
-    return _marginal_rate(taxable, brackets)
 
 
 def rmd_divisor(age, rmd_start_age=73):

@@ -26,6 +26,7 @@ const LEDGER_SERIES = [
 const PROFILE_FIELDS = [
   { id: "filingStatus", type: "value" },
   { id: "state", type: "value" },
+  { id: "stateInRetirement", type: "value" },
   { id: "currentAge", type: "value" },
   { id: "retirementAge", type: "value" },
   { id: "balTraditional", type: "value" },
@@ -106,7 +107,7 @@ function readHousehold() {
     household: {
       filingStatus: document.getElementById("filingStatus").value,
       state: document.getElementById("state").value,
-      stateInRetirement: document.getElementById("state").value,
+      stateInRetirement: document.getElementById("stateInRetirement").value,
       dependents: 0,
       currentAge_primary: Number(document.getElementById("currentAge").value),
       targetRetirementAge: Number(document.getElementById("retirementAge").value),

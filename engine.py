@@ -40,9 +40,22 @@ Withdrawal order in retirement - two strategies, chosen via `withdrawal_strategy
 Social Security (v2): if `household.assumeZeroSocialSecurity` is false, an assumed
 annual benefit starts at `socialSecurity.claimingAge` and reduces the withdrawal need
 each year like any other income source. Its FEDERAL taxability follows the
-provisional-income test in tax_tables.py; Wisconsin does not tax Social Security at
-all, so the WI ordinary-income base excludes it entirely - the engine tracks separate
-federal vs. WI ordinary-income figures for this reason.
+provisional-income test in tax_tables.py; no state this tool supports taxes Social
+Security, so it is never included in the state-tax base regardless of federal
+treatment - the engine tracks separate federal vs. state ordinary-income figures for
+this reason.
+
+State taxation (v5, 2026-09-06): `household.state` (while working) and
+`household.stateInRetirement` (may differ - e.g. a planned relocation) each select a
+state whose rules apply for that phase. Unlike Wisconsin, which taxes wages and
+retirement-account withdrawals identically, some states (Illinois so far) tax them
+completely differently - Illinois exempts retirement withdrawals from state tax
+entirely. So the engine tracks wage income and retirement-withdrawal income as
+SEPARATE figures (`wage_income_state`/`retirement_withdrawal_state`) and hands both to
+`tax_tables.state_tax()`/`state_marginal_rate()`, which dispatch to the selected
+state's own rules - see tax_tables.py's module docstring and `STATE_TAX_FUNCS` for
+which states are implemented. Requesting an unsupported state raises immediately
+rather than silently defaulting to Wisconsin's rules.
 
 Child tax credits, IRMAA, and ACA-subsidy interactions are NOT modeled - noted as
 scope limits, not silent gaps.
@@ -67,7 +80,7 @@ def net_of_tax_wealth(final_row, ltcg_gain_fraction=0.60):
     a simplification (real liquidation may span years/brackets), not a precise number.
     Returns (net_wealth, liquidation_rate_used).
     """
-    liquidation_rate = final_row["marginal_federal_rate"] + final_row["marginal_wi_rate"]
+    liquidation_rate = final_row["marginal_federal_rate"] + final_row["marginal_state_rate"]
     trad_net = final_row["end_traditional"] * (1 - liquidation_rate)
     taxable_net = final_row["end_taxable"] * (1 - ltcg_gain_fraction * tax_tables.LTCG_COMBINED_RATE)
     roth_net = final_row["end_roth"]
@@ -82,6 +95,8 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
     age = h["currentAge_primary"]
     retire_age = h["targetRetirementAge"]
     filing = h["filingStatus"]
+    state_while_working = h.get("state", "WI")
+    state_in_retirement = h.get("stateInRetirement", state_while_working)
 
     totals = hh["balances"]["totals"]
     trad = totals["traditional_all"]
@@ -120,7 +135,9 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             trad += trad_contrib
             roth += roth_contrib
             ordinary_income_fed = max(0.0, wage_base - employee_contrib * (1 - roth_fraction))
-            ordinary_income_wi = ordinary_income_fed
+            wage_income_state = ordinary_income_fed
+            retirement_withdrawal_state = 0.0
+            state_this_year = state_while_working
             ss_income = 0.0
             taxable_ss = 0.0
             record["phase"] = "accumulation"
@@ -165,23 +182,29 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             taxable -= withdrawal_taxable
 
             # SS taxability depends on OTHER ordinary income (traditional withdrawals),
-            # not on itself - compute before adding it to the federal base. WI excludes
-            # Social Security from its ordinary-income base entirely (state law), so the
-            # WI base never includes ss_income regardless of federal treatment.
+            # not on itself - compute before adding it to the federal base. No state
+            # this tool supports taxes Social Security, so it never enters the state
+            # base regardless of federal treatment.
             taxable_ss = tax_tables.taxable_social_security(ss_income, withdrawal_trad, current_filing)
             ordinary_income_fed = withdrawal_trad + taxable_ss
-            ordinary_income_wi = withdrawal_trad
+            wage_income_state = 0.0
+            retirement_withdrawal_state = withdrawal_trad
+            state_this_year = state_in_retirement
             excess_rmd = excess_forced  # reinvested into taxable below, same treatment either source
 
         fed_tax = tax_tables.federal_tax(ordinary_income_fed, current_filing)
-        state_tax = tax_tables.wi_tax(ordinary_income_wi, current_filing)
+        state_tax_amt = tax_tables.state_tax(
+            state_this_year, current_filing,
+            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state)
         ltcg_tax = withdrawal_taxable * ltcg_gain_fraction * tax_tables.LTCG_COMBINED_RATE
         marginal_fed = tax_tables.federal_marginal_rate(ordinary_income_fed, current_filing)
-        marginal_wi = tax_tables.wi_marginal_rate(ordinary_income_wi, current_filing)
-        total_tax = fed_tax + state_tax + ltcg_tax
+        marginal_state = tax_tables.state_marginal_rate(
+            state_this_year, current_filing,
+            wage_income=wage_income_state, retirement_withdrawal_income=retirement_withdrawal_state)
+        total_tax = fed_tax + state_tax_amt + ltcg_tax
 
         if excess_rmd > 0 and ordinary_income_fed > 0:
-            avg_ordinary_tax_rate = (fed_tax + state_tax) / ordinary_income_fed
+            avg_ordinary_tax_rate = (fed_tax + state_tax_amt) / ordinary_income_fed
             taxable += excess_rmd * (1 - avg_ordinary_tax_rate)
 
         trad = max(0.0, trad) * (1 + real_return)
@@ -189,8 +212,9 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
         taxable = max(0.0, taxable) * (1 + real_return)
 
         record.update({
+            "state": state_this_year,
             "ordinary_income_federal": round(ordinary_income_fed, 2),
-            "ordinary_income_wi": round(ordinary_income_wi, 2),
+            "ordinary_income_state": round(wage_income_state + retirement_withdrawal_state, 2),
             "ss_income": round(ss_income, 2),
             "taxable_ss": round(taxable_ss, 2),
             "withdrawal_traditional": round(withdrawal_trad, 2),
@@ -198,11 +222,11 @@ def run_scenario(hh, roth_fraction, real_return=0.05, ltcg_gain_fraction=0.6,
             "withdrawal_taxable": round(withdrawal_taxable, 2),
             "rmd_amount": round(rmd_amt, 2),
             "federal_tax": round(fed_tax, 2),
-            "wi_tax": round(state_tax, 2),
+            "state_tax": round(state_tax_amt, 2),
             "ltcg_tax": round(ltcg_tax, 2),
             "total_tax": round(total_tax, 2),
             "marginal_federal_rate": marginal_fed,
-            "marginal_wi_rate": marginal_wi,
+            "marginal_state_rate": marginal_state,
             "end_traditional": round(trad, 2),
             "end_roth": round(roth, 2),
             "end_taxable": round(taxable, 2),

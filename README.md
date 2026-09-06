@@ -64,22 +64,41 @@ add it to `.gitignore` if you're working in a fork.
 
 ## Known scope limits (not modeled)
 
-Child tax credits, IRMAA/ACA premium cliffs, long-term-care cost shocks,
-pre-retirement wage growth/promotions, and mid-retirement state relocation are all
-explicitly out of scope. Everything is modeled in real (today's) dollars - brackets
-and spending held flat rather than carrying a separate inflation track. Federal tax
-tables are high-confidence (checked against 2025 post-OBBBA law); Wisconsin's
-brackets and standard-deduction phase-out are verified against the live WI DOR 2025
-Form 1 instructions - **using a different state requires adding its own bracket/
-deduction schedule to `tax_tables.py` first.**
+Child tax credits, IRMAA/ACA premium cliffs, long-term-care cost shocks, and
+pre-retirement wage growth/promotions are explicitly out of scope. Everything is
+modeled in real (today's) dollars - brackets and spending held flat rather than
+carrying a separate inflation track. Federal tax tables are high-confidence (checked
+against 2025 post-OBBBA law).
 
-**Planned state additions (not yet built):** Illinois, Indiana, Michigan, South
-Carolina, and Florida. Each needs its own bracket/standard-deduction schedule
-verified against that state's live Department of Revenue source before being added
-- the same treatment WI got, not a guess ported from an unverified third-party
-summary. Florida has no state income tax, so it just needs a zero-rate schedule
-(and a UI note that its `wi_tax`-equivalent trivially returns 0) rather than a real
-bracket table.
+## Supported states
+
+Two states are implemented, both verified against a live Department of Revenue
+source (not a third-party summary):
+
+- **Wisconsin** - graduated brackets 3.5%-7.65%, a standard deduction that phases
+  out linearly to $0 by ~$155K MFJ / ~$132K Single. Taxes wages and
+  retirement-account withdrawals identically as ordinary income.
+- **Illinois** - flat 4.95%, with a small personal exemption ($2,850/$5,700 MFJ)
+  that phases out entirely above $250K/$500K income. **Critically different from
+  Wisconsin: Illinois completely exempts Social Security, pensions, and 401(k)/IRA
+  withdrawals from state tax** - only wages are taxed. This is why `tax_tables.py`'s
+  state functions take separate `wage_income` and `retirement_withdrawal_income`
+  arguments rather than one blended figure - a state can (and Illinois does) tax
+  those two very differently.
+
+You can set a different state for the working years (`state`) than retirement
+(`stateInRetirement`) - useful for a planned relocation.
+
+**Planned additions (not yet built):** Indiana, Michigan, South Carolina, and
+Florida - see `tax_tables.py`'s `STATE_TAX_FUNCS` for how a new state plugs in.
+Each needs its own schedule verified against that state's live Department of
+Revenue source before being added, the same treatment WI and IL got. Florida has no
+state income tax, so it just needs a zero-rate implementation rather than a real
+bracket table. Michigan and South Carolina both have income-type-dependent rules
+(an age/birth-year-based retirement income deduction) similar in spirit to
+Illinois's exemption, so the `wage_income`/`retirement_withdrawal_income` split
+built for Illinois should carry over directly rather than needing another
+architecture change.
 
 ## Sensitivity tools
 

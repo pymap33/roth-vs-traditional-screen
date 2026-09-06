@@ -48,15 +48,28 @@
         </select>
       </div>
       <div class="field-row">
-        <label for="state">State</label>
+        <label for="state">State while working</label>
         <select id="state">
           <option value="WI">Wisconsin</option>
+          <option value="IL">Illinois</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <label for="stateInRetirement">State in retirement</label>
+        <select id="stateInRetirement">
+          <option value="WI">Wisconsin</option>
+          <option value="IL">Illinois</option>
         </select>
         <p class="field-note">
-          Only Wisconsin's tax brackets are built into this tool today. Illinois,
-          Indiana, Michigan, South Carolina, and Florida are planned but not yet
-          added — using any other state requires adding its bracket/deduction
-          schedule to <code>tax_tables.py</code> first. See the repository README.
+          Only Wisconsin and Illinois are built into this tool today — Indiana,
+          Michigan, South Carolina, and Florida are planned but not yet added
+          (using any other state requires adding its rules to
+          <code>tax_tables.py</code> first; see the repository README).
+          Wisconsin taxes retirement-account withdrawals the same as wages;
+          Illinois exempts Social Security, pensions, and 401k/IRA withdrawals
+          from state tax entirely, taxing only wages at a flat 4.95%. If you
+          plan to relocate before or during retirement, set these two
+          differently — otherwise leave them the same.
         </p>
       </div>
       <div class="field-row">
