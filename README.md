@@ -118,7 +118,8 @@ treatment every state above got.
 
 ## Sensitivity tools
 
-- `sensitivity_return.py` - real return assumption, 2-6%.
+- `sensitivity_return.py` - real return assumption, 0-6% (0% is a degenerate
+  spending-depletion case, not a ranking test; ranking holds 1-6%).
 - `sensitivity_social_security.py` - SS benefit on/off at several levels.
 - `compare_withdrawal_order.py` - all three withdrawal strategies side by side.
 
