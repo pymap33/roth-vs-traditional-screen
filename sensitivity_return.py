@@ -6,7 +6,7 @@ return assumption, or was 5%/yr doing more work than it should?
 from engine import load_household, run_scenario, net_of_tax_wealth
 
 INPUT = "inputs/household.json"
-RETURN_RATES = [0.02, 0.03, 0.04, 0.05, 0.06]
+RETURN_RATES = [0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06]
 SCENARIOS = [
     ("100pct_roth", 1.00),
     ("75_25_roth_trad", 0.75),
